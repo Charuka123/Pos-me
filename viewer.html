@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <title>Advanced Satellite Tracker</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #000; color: white; overflow: hidden; }
+        #header { height: 70px; background: #111; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 2px solid #007bff; z-index: 1000; position: relative; }
+        #map { height: calc(100vh - 70px); width: 100%; }
+        .status-box { background: #222; padding: 5px 15px; border-radius: 8px; border: 1px solid #444; }
+        .data-val { color: #00d4ff; font-weight: bold; }
+        .gbtn { background: #ea4335; color: white; padding: 8px 15px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; }
+        .cbtn { background: #555; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; margin-left: 10px; }
+        .cbtn:hover { background: #ff4757; }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <div id="details">
+        <strong>🛰️ LIVE TRACKER</strong><br>
+        <span id="update-time" style="font-size: 12px; color: #888;">Waiting for data...</span>
+    </div>
+    <div class="status-box">
+        Points: <span id="p-count" class="data-val">0</span> | 
+        Lat: <span id="lat-val" class="data-val">--</span> | 
+        Lon: <span id="lon-val" class="data-val">--</span>
+    </div>
+    <div>
+        <a id="gmaps-link" href="#" target="_blank" class="gbtn">Google Maps</a>
+        <button onclick="clearHistory()" class="cbtn">Clear</button>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    // ඔබේ Firebase URL එක
+    const dbUrl = "https://locationtc-e0ffe-default-rtdb.firebaseio.com/history.json";
+
+    // 1. සිතියම් වර්ග සකස් කිරීම
+    var streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+    
+    var satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri Satellite'
+    });
+
+    // 2. සිතියම ආරම්භ කිරීම
+    var map = L.map('map', {
+        center: [7.87, 80.77],
+        zoom: 7,
+        layers: [satelliteMap] // මුලින්ම Satellite පෙන්වයි
+    });
+
+    // සිතියම් මාරු කිරීමට බටන් එක
+    var baseMaps = {
+        "Satellite": satelliteMap,
+        "Street": streetMap
+    };
+    L.control.layers(baseMaps).addTo(map);
+
+    // Timeline රේඛාව (කහ පාට)
+    var pathLine = L.polyline([], {color: '#f1c40f', weight: 4, opacity: 0.8}).addTo(map);
+    
+    // දැනට සිටින තැන (නිල් පාට ලක්ෂ්‍යය)
+    var currentMarker = L.circleMarker([0, 0], {radius: 7, color: '#00d4ff', fillColor: '#00d4ff', fillOpacity: 1}).addTo(map);
+
+    function fetchData() {
+        fetch(dbUrl)
+            .then(res => res.json())
+            .then(data => {
+                if(!data) return;
+
+                var points = [];
+                Object.keys(data).forEach(key => points.push(data[key]));
+                
+                // කාලය අනුව පෙළගැස්වීම
+                points.sort((a, b) => a.timestamp - b.timestamp);
+
+                // සිතියම මත ඉර ඇඳීම
+                var latLngs = points.map(p => [p.lat, p.lon]);
+                pathLine.setLatLngs(latLngs);
+
+                if(points.length > 0) {
+                    var last = points[points.length - 1];
+                    var pos = [last.lat, last.lon];
+
+                    // මාකර් එක Update කිරීම
+                    currentMarker.setLatLng(pos);
+                    map.panTo(pos);
+
+                    // UI එක Update කිරීම
+                    document.getElementById('p-count').innerHTML = points.length;
+                    document.getElementById('lat-val').innerHTML = last.lat.toFixed(4);
+                    document.getElementById('lon-val').innerHTML = last.lon.toFixed(4);
+                    document.getElementById('update-time').innerHTML = "Last Updated: " + last.timeString;
+                    document.getElementById('gmaps-link').href = "https://www.google.com/maps?q=" + last.lat + "," + last.lon;
+                }
+            })
+            .catch(err => console.log("Fetching..."));
+    }
+
+    function clearHistory() {
+        if(confirm("මොනවාද කරන්නේ? මුළු ඉතිහාසයම මකා දමන්නද?")) {
+            fetch(dbUrl, { method: 'DELETE' }).then(() => location.reload());
+        }
+    }
+
+    // තත්පර 3කට වරක් පරීක්ෂා කිරීම
+    setInterval(fetchData, 3000);
+    fetchData();
+</script>
+
+</body>
+</html>
